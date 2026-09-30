@@ -2,7 +2,7 @@ param storageAccountName string
 param appInsightsName string
 param managedIdentityPrincipalId string
 
-@description('Object ID of the user running the deployment (the developer). Granted Storage Queue Data Contributor (send/read the demo queues) and Storage Blob Data Contributor (show/replace the policy document) so the demo scripts work out of the box. Empty = skip.')
+@description('Object ID of the user running the deployment. Granted Storage Blob Data Contributor so policy and Dataverse demo scripts work out of the box. Empty = skip.')
 param developerPrincipalId string = ''
 
 var storageRoleDefinitionId = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b' // Storage Blob Data Owner
@@ -29,6 +29,8 @@ resource storageRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-
   }
 }
 
+// Azure Functions uses the host storage queue service internally even though business
+// requests and decisions no longer use Storage Queues.
 resource queueRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(storageAccount.id, managedIdentityPrincipalId, queueRoleDefinitionId)
   scope: storageAccount
@@ -56,19 +58,6 @@ resource appInsightsRoleAssignment 'Microsoft.Authorization/roleAssignments@2022
     roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', monitoringRoleDefinitionId)
     principalId: managedIdentityPrincipalId
     principalType: 'ServicePrincipal'
-  }
-}
-
-// The demo scripts run as the deploying user: send_expense.py enqueues test requests on the input
-// queue and read_decision.py peeks/dequeues the output queues. Storage Queue Data Contributor covers
-// both, so the sample works out of the box even with allowSharedKeyAccess:false.
-resource developerQueueRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(developerPrincipalId)) {
-  name: guid(storageAccount.id, developerPrincipalId, queueRoleDefinitionId)
-  scope: storageAccount
-  properties: {
-    roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', queueRoleDefinitionId)
-    principalId: developerPrincipalId
-    principalType: 'User'
   }
 }
 

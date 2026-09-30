@@ -8,41 +8,41 @@ capital hardware needs asset tagging and recurring subscriptions need procuremen
 tracking, so those get a human look._
 
 Work the rules in order, **top to bottom; the first rule that matches decides the
-outcome**. Every request is routed to exactly one queue.
+outcome**. Every request receives exactly one Dataverse decision status.
 
 ## 1. Completeness
 
 If you cannot determine an amount, or the request is too vague to price, it cannot
 be auto-processed.
 
-- **Decision:** `flag` → `expense-flagged` (needs clarification).
+- **Decision:** `Flagged` (needs clarification).
 
 ## 2. Recurring subscriptions
 
 Any recurring or annual software subscription (SaaS, licenses that renew) requires
 review so procurement can track the renewal — regardless of amount.
 
-- **Decision:** `route` → `expense-review`.
+- **Decision:** `Needs Review`.
 
 ## 3. Currency
 
 Evaluate amounts in **US dollars (USD)**. If the amount is in any other currency, do
 **not** guess an exchange rate.
 
-- **Decision:** `route` → `expense-review` for FX verification.
+- **Decision:** `Needs Review` for FX verification.
 
 ## 4. Amount thresholds (USD)
 
 For a one-time hardware or software purchase with a clear USD amount:
 
-| Amount (USD)               | Decision  | Queue              |
-| -------------------------- | --------- | ------------------ |
-| $500 or less               | `approve` | `expense-approved` |
-| Over $500, up to $2,500    | `route`   | `expense-review`   |
-| Over $2,500                | `flag`    | `expense-flagged`  |
+| Amount (USD)               | Decision       |
+| -------------------------- | -------------- |
+| $500 or less               | `Approved`     |
+| Over $500, up to $2,500    | `Needs Review` |
+| Over $2,500                | `Flagged`      |
 
-Boundary values follow the table exactly: **$500 is `approve`**, **$2,500 is
-`route`**. Purchases over $2,500 are treated as capital assets and must be flagged
+Boundary values follow the table exactly: **$500 is `Approved`**, **$2,500 is
+`Needs Review`**. Purchases over $2,500 are treated as capital assets and must be flagged
 for asset tagging.
 
 ## Notes for the reviewer

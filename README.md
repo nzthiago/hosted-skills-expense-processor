@@ -1,168 +1,144 @@
-# Azure Functions Hosted Skill: Expense Processor [![Python](https://img.shields.io/badge/Python-3.13-blue.svg)](https://www.python.org/downloads/)
+# Dataverse expense processor hosted skill
 
-A markdown-first Azure Functions hosted skill for queue-driven expense processing. Its trigger and
-instructions live in
-[`src/expense_processor.agent.md`](src/expense_processor.agent.md), and Azure Functions
-handles execution and scale-to-zero.
+An Azure Functions hosted skill that processes expense requests end to end in Microsoft Dataverse.
+A created `Expense Request` row starts the flow. The skill selects the applicable policy from Blob
+Storage and updates that same row with one of three outcomes: **Approved**, **Needs Review**, or
+**Flagged**.
 
-## What it does
+## What changed from the queue sample
 
-- 🧾 **Reads any format:** text, email, key/value, or JSON, and normalizes amounts expressed with
-  symbols, currency codes, words, or colloquial units.
-- 📚 **Picks the right policy:** lists the documents in Blob Storage and selects the one whose scope
-  matches, then reads and applies it through a read-only Connector Namespace MCP server.
-- 🛡️ **Governs model calls:** sends deployed model traffic through an Azure API Management AI
-  Gateway with managed identity, token limits, prompt shielding, harmful-input filtering, and token
-  metrics.
-- 🚦 **Routes the decision:** `approve` → `expense-approved`, `review` → `expense-review`,
-  `flag` / FX → `expense-flagged`.
-- 🔀 **Proves it's reasoning:** the same normalized 450 USD is auto-approved as travel but sent to
-  review as a client dinner; tighten one policy document and only that category reroutes.
+- Dataverse `GetOnNewItems_V2` replaces the `expense-requests` Storage Queue trigger.
+- The Dataverse connector callback invokes the hosted skill directly.
+- Dataverse `PatchItem_V2` update replaces the three outcome queues.
+- The source row receives `Decision`, `Reason`, `Policy applied`, and `Processed on`.
+- The demo creates real Dataverse rows and waits for their final updates.
+
+## Dataverse row contract
+
+The included unmanaged solution creates the `Expense Request` table:
+
+| Field | Logical name | Direction |
+| --- | --- | --- |
+| Expense ID | `hep_expenseid` | Input / primary name |
+| Description | `hep_description` | Input |
+| Amount | `hep_amount` | Input |
+| Currency | `hep_currency` | Input |
+| Vendor | `hep_vendor` | Input |
+| Category | `hep_category` | Input |
+| Submitted by | `hep_submittedby` | Input |
+| Decision | `hep_decision` | Output |
+| Reason | `hep_reason` | Output |
+| Policy applied | `hep_policyapplied` | Output |
+| Processed on | `hep_processedon` | Output |
+
+`Decision` is set to exactly `Approved`, `Needs Review`, or `Flagged`.
+`Reason` is limited to 90 characters for connector compatibility. `Processed on` uses compact UTC
+format `YYYYMMDDTHHMMSSZ`.
 
 ## Prerequisites
 
-- An [Azure subscription](https://azure.microsoft.com/free/)
-- [uv](https://docs.astral.sh/uv/)
-- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- Azure subscription with permission to deploy the included infrastructure
+- Existing Power Platform environment with Dataverse
+- Azure CLI, Azure Developer CLI, `uv`, and Python 3.13
+- Power Platform CLI (`pac`) recommended for Dataverse setup; Azure CLI authentication is also
+  supported
+- Permission to create Dataverse customizations and authorize a Dataverse connector connection
 
-The deployment creates an API Management **Developer** instance. This is the lowest tier that
-supports the sample's token-limit and Content Safety policies, but it has a recurring cost and no
-production SLA.
+## 1. Install dependencies
 
-## Quickstart
-
-```bash
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = Join-Path $HOME ".cache\hosted-skills-expense-processor"
 uv sync --project src
+```
+
+This keeps the Python environment outside the repository.
+
+## 2. Create the Dataverse schema
+
+Use the environment URL directly:
+
+```powershell
+uv run --project src --no-sync python scripts/setup_dataverse_schema.py `
+  --environment-url https://<organization>.crm.dynamics.com
+```
+
+You can use `--environment-id` or `--environment-name` instead. The script creates or verifies the
+publisher, unmanaged solution, table, and all input/output columns described in
+`dataverse/expense-request.schema.json`.
+
+## 3. Configure and deploy
+
+```powershell
 azd auth login
+az login
+azd env new
+azd env set DATAVERSE_ENVIRONMENT_URL https://<organization>.crm.dynamics.com
 azd up
 ```
 
-The deployment seeds the policy documents but does not submit expenses, so a fresh deployment's
-queues remain empty. Verify the empty output queues:
+During `azd up`:
 
-```bash
-uv run --project src --no-sync python scripts/read_decision.py --queue all --peek --cloud
+1. Azure resources and the Connector Namespace are provisioned.
+2. A browser opens so you can authorize the Dataverse connection.
+3. The policy documents are seeded into Blob Storage.
+4. The Function app is deployed.
+5. The Dataverse created-row trigger is connected directly to the hosted skill's `main` function.
+
+Instead of the URL, set `DATAVERSE_ENVIRONMENT_ID` or `DATAVERSE_ENVIRONMENT_NAME`.
+
+## 4. Run the full demo
+
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = Join-Path $HOME ".cache\hosted-skills-expense-processor"
+uv run --project src --no-sync python scripts/demo_dataverse.py --scenario all
 ```
 
-Submit the three bundled demo expenses, allow up to two minutes for processing, and read the
-resulting decisions:
+The command creates three unique Dataverse rows and waits for:
 
-```bash
-uv run --project src --no-sync python scripts/setup_demo.py send-samples
-uv run --project src --no-sync python scripts/read_decision.py --queue all --peek --cloud
-```
+| Scenario | Policy | Expected result |
+| --- | --- | --- |
+| $450 standard airfare | `travel-policy.md` | `Approved` |
+| $450 client dinner | `meals-entertainment-policy.md` | `Needs Review` |
+| $5,000 workstation | `equipment-software-policy.md` | `Flagged` |
 
-`send-samples` skips submission when an output queue already contains a decision. To reset the
-three output queues for a fresh demo, receive and remove their messages, then run `send-samples`
-again:
+The connector trigger polls every five minutes, so a full run can take several minutes. The script
+creates all three rows before polling, refreshes Dataverse authentication if needed, and prints each
+row ID, final decision, reason, policy, and processing timestamp. Use `--no-wait` to create rows
+without polling.
 
-```bash
-uv run --project src --no-sync python scripts/read_decision.py --queue all --cloud --max 1000
-```
+## Demo talk track
 
-Omitting `--peek` deletes the messages it reads. This command clears the three output queues; it
-does not clear the input or poison queue. The `--no-sync` commands reuse the environment prepared by
-the initial `uv sync --project src` and do not contact PyPI.
+For a timed presenter script, checkpoints, and fallback path, see
+[`docs/demo-run-sheet.md`](docs/demo-run-sheet.md).
 
-You should then see:
+1. Open the `Expense Requests` Dataverse table and show the output columns are empty.
+2. Run `scripts/demo_dataverse.py --scenario all`.
+3. Explain that the Dataverse connector detects new rows and calls the Function connector webhook.
+4. Show the hosted skill reading category-specific policy Markdown through a read-only Blob MCP
+   server.
+5. Refresh Dataverse and show all three source rows updated in place.
+6. Replace a policy with `scripts/set_policy.py`, submit another row, and show behavior changing
+   without a code deployment.
 
-| Request as received | Amount inferred | Policy | Queue |
-|---|---:|---|---|
-| “four hundred and fifty dollars” flight | 450 USD | `travel-policy.md` | `expense-approved` |
-| `USD 450.00` monitor | 450 USD | `equipment-software-policy.md` | `expense-approved` |
-| `$450` client dinner | 450 USD | `meals-entertainment-policy.md` | `expense-review` |
+## Architecture
 
-Open the Application Insights overview, then use **Search** (formerly **Transaction search**) or
-**Logs** to inspect the hosted skill, model calls, and tool spans:
+1. Dataverse Connector Namespace polls `hep_expenserequests` for created rows.
+2. The connector invokes the hosted skill's `connector_trigger` directly.
+3. The skill extracts the Dataverse row fields and row GUID from the connector payload.
+4. The skill lists and reads the applicable Markdown policy through the Blob MCP server.
+5. The skill calls the Dataverse MCP server's `PatchItem_V2` update operation once for the source
+   row.
 
-```bash
-azd monitor --overview
-```
+The Dataverse connection is OAuth-authorized interactively. The hosted skill can invoke only the
+single table-pinned update operation exposed by its MCP server.
 
-Look for successful `execute_tool azureblob_ListFolder_V4`,
-`execute_tool azureblob_GetFileContentByPath_V2`, and
-`execute_tool azurequeues_PutMessage_V2` spans, plus AI Gateway requests and token metrics. See
-[Deploy](docs/deploy.md#show-the-telemetry) for the portal walkthrough.
+## Key files
 
-Clean up with `azd down --purge`.
+- `dataverse/expense-request.schema.json` — Dataverse solution and table contract
+- `scripts/setup_dataverse_schema.py` — repeatable schema setup and verification
+- `scripts/demo_dataverse.py` — end-to-end three-outcome demo
+- `src/main.agent.md` — hosted skill trigger and policy instructions
+- `infra/app/blob-policy-connector.bicep` — Blob read and Dataverse update MCP servers
+- `infra/app/dataverse-trigger-config.bicep` — Dataverse created-row trigger
 
-## Run it locally
-
-Install [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite) and
-[Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local).
-Copy [`src/local.settings.json.sample`](src/local.settings.json.sample) to `src/local.settings.json`
-and set the model endpoint and deployment. No API key is needed; the runtime uses
-`DefaultAzureCredential`, so sign in with `az login` or `azd auth login`. Policy lookup uses the
-deployed Connector Namespace because Connector Namespace has no local emulator. After
-`azd provision`, copy
-`POLICY_MCP_SERVER_URL` and `QUEUE_MCP_SERVER_URL` from `azd env get-values` into local settings
-and leave both MCP client IDs empty so your developer credential is used.
-
-```bash
-azurite --silent --location .azurite               # terminal A
-cd src && uv run func start                         # terminal B
-uv run --project src --no-sync python scripts/send_expense.py --file samples/travel.txt   # terminal C
-uv run --project src --no-sync python scripts/read_decision.py --queue all --peek --cloud
-```
-
-The model call and both Connector Namespace MCP servers still use Azure. The local trigger reads
-Azurite, but decisions are written to the deployed Azure output queues because Connector Namespace
-has no local emulator. For setup and Windows help, see
-[Troubleshooting](docs/troubleshooting.md).
-
-## How it works
-
-```mermaid
-flowchart LR
-    msg([raw message<br/>text · JSON · key-value])
-
-    subgraph inbound["Azure Queue Storage · inbound"]
-        inq[[expense-requests]]
-    end
-
-    subgraph policies["Azure Blob Storage · policies container"]
-        pdocs[(travel · meals · equipment<br/>general policy docs)]
-    end
-
-    skill{{Expense Processor skill<br/>extract · select · apply · route}}
-    gateway{{API Management AI Gateway<br/>identity · token limits · content safety · metrics}}
-    model[(Microsoft Foundry<br/>gpt-5.4)]
-
-    subgraph outbound["Azure Queue Storage · outbound"]
-        approved[[expense-approved]]
-        review[[expense-review]]
-        flagged[[expense-flagged]]
-    end
-
-    msg --> inq
-    inq -->|queue trigger| skill
-    pdocs -->|Connector Namespace<br/>Blob MCP tools| skill
-    skill -->|Responses API| gateway
-    gateway -->|managed identity| model
-    skill -->|Queue MCP| approved
-    skill -->|Queue MCP| review
-    skill -->|Queue MCP| flagged
-```
-
-The runtime discovers the hosted skill's Markdown definition. Its front matter defines the queue
-trigger, and its body contains the instructions. A read-only Azure Blob MCP connector lists and
-reads policy documents, while a write-only Azure Queues MCP connector routes decisions to the three
-output queues. The Connector Namespace managed identity receives container-scoped Blob Reader and
-queue-scoped Message Sender roles. In Azure, model requests use the Function identity to enter the
-AI Gateway; API Management then calls Microsoft Foundry with its own managed identity.
-
-[How it works](docs/how-it-works.md) · [Use cases](docs/use-cases.md) ·
-[Customize](docs/customize.md) · [Deploy](docs/deploy.md) ·
-[Troubleshooting](docs/troubleshooting.md)
-
-## Learn more
-
-- [Hosted skills in Azure Functions](https://learn.microsoft.com/azure/azure-functions/functions-serverless-agents-runtime)
-- [Azure Functions Flex Consumption](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)
-- [Connector Namespace](https://learn.microsoft.com/azure/connector-namespace/connector-namespace-overview)
-- [Generative AI gateway capabilities](https://learn.microsoft.com/azure/api-management/genai-gateway-capabilities)
-- [uv](https://docs.astral.sh/uv/) · [PEP 723: inline script metadata](https://peps.python.org/pep-0723/)
-
-## License
-
-[MIT](LICENSE) © Microsoft Corporation.
+See `docs/deploy.md`, `docs/how-it-works.md`, and `docs/troubleshooting.md` for details.

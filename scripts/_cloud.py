@@ -1,11 +1,10 @@
-"""Shared helper for the demo scripts: resolve the deployed storage account's queue and
-blob endpoints so ``--cloud`` targets the deployed resources (Entra ID) without pasting a URL.
+"""Resolve the deployed Blob endpoint without requiring a pasted URL.
 
 Resolution order (first hit wins):
-  1. an explicit value (e.g. ``--account-url``)
-  2. ``OUTPUT_STORAGE_ACCOUNT_URL``  — a full queue endpoint URL
-  3. ``OUTPUT_STORAGE_ACCOUNT``      — the account *name*; we build the URL
-  4. ``azd env get-values``          — reads ``OUTPUT_STORAGE_ACCOUNT`` from the azd env
+  1. an explicit value
+  2. ``OUTPUT_STORAGE_ACCOUNT_BLOB_URL``
+  3. ``OUTPUT_STORAGE_ACCOUNT`` — the account name; we build the URL
+  4. ``azd env get-values`` — reads ``OUTPUT_STORAGE_ACCOUNT`` from the azd env
 
 Returns ``None`` when nothing resolves.
 """
@@ -44,25 +43,8 @@ def _account_name_from_azd() -> str | None:
     return None
 
 
-def resolve_queue_account_url(explicit: str | None = None) -> str | None:
-    """Return the queue endpoint URL for the deployed storage account, or None."""
-    if explicit:
-        return explicit
-    url = os.environ.get("OUTPUT_STORAGE_ACCOUNT_URL")
-    if url:
-        return url
-    name = os.environ.get("OUTPUT_STORAGE_ACCOUNT") or _account_name_from_azd()
-    if name:
-        return f"https://{name}.queue.core.windows.net"
-    return None
-
-
 def resolve_blob_account_url(explicit: str | None = None) -> str | None:
-    """Return the blob endpoint URL for the deployed storage account, or None.
-
-    Mirrors :func:`resolve_queue_account_url` for the policy document, which lives in
-    Blob Storage on the same account as the queues.
-    """
+    """Return the Blob endpoint URL for the deployed storage account, or None."""
     if explicit:
         return explicit
     url = os.environ.get("OUTPUT_STORAGE_ACCOUNT_BLOB_URL")

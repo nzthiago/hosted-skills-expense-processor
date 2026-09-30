@@ -8,47 +8,47 @@ auto-approve ceiling is higher than the general policy — but premium travel an
 foreign-currency receipts still get a human look._
 
 Work the rules in order, **top to bottom; the first rule that matches decides the
-outcome**. Every request is routed to exactly one queue.
+outcome**. Every request receives exactly one Dataverse decision status.
 
 ## 1. Completeness
 
 If you cannot determine an amount, or the request is too vague to price, it cannot
 be auto-processed.
 
-- **Decision:** `flag` → `expense-flagged` (needs clarification).
+- **Decision:** `Flagged` (needs clarification).
 
 ## 2. Cash advances
 
 Travel cash advances require manager sign-off, regardless of amount.
 
-- **Decision:** `flag` → `expense-flagged`.
+- **Decision:** `Flagged`.
 
 ## 3. Premium travel
 
 First-class or business-class airfare, suites, and other premium upgrades always
 need review, regardless of amount, so the business justification can be recorded.
 
-- **Decision:** `route` → `expense-review`.
+- **Decision:** `Needs Review`.
 
 ## 4. Currency
 
 Travel receipts are frequently foreign. Evaluate amounts in **US dollars (USD)**; if
 the amount is in any other currency, do **not** guess an exchange rate.
 
-- **Decision:** `route` → `expense-review` for FX verification.
+- **Decision:** `Needs Review` for FX verification.
 
 ## 5. Amount thresholds (USD)
 
 For standard (economy / standard-rate) travel with a clear USD amount:
 
-| Amount (USD)               | Decision  | Queue              |
-| -------------------------- | --------- | ------------------ |
-| $1,000 or less             | `approve` | `expense-approved` |
-| Over $1,000, up to $5,000  | `route`   | `expense-review`   |
-| Over $5,000                | `flag`    | `expense-flagged`  |
+| Amount (USD)               | Decision       |
+| -------------------------- | -------------- |
+| $1,000 or less             | `Approved`     |
+| Over $1,000, up to $5,000  | `Needs Review` |
+| Over $5,000                | `Flagged`      |
 
-Boundary values follow the table exactly: **$1,000 is `approve`**, **$5,000 is
-`route`**.
+Boundary values follow the table exactly: **$1,000 is `Approved`**, **$5,000 is
+`Needs Review`**.
 
 ## Notes for the reviewer
 

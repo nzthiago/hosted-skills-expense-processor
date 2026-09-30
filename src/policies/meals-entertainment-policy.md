@@ -8,41 +8,41 @@ entertainment carries extra scrutiny (business purpose, attendees), so it always
 gets a human look._
 
 Work the rules in order, **top to bottom; the first rule that matches decides the
-outcome**. Every request is routed to exactly one queue.
+outcome**. Every request receives exactly one Dataverse decision status.
 
 ## 1. Completeness
 
 If you cannot determine an amount, or the request is too vague to price, it cannot
 be auto-processed.
 
-- **Decision:** `flag` → `expense-flagged` (needs clarification).
+- **Decision:** `Flagged` (needs clarification).
 
 ## 2. Client & business entertainment
 
 Any client entertainment, hosted event, or meal with external guests requires review
 so the business purpose and attendee list can be attached — regardless of amount.
 
-- **Decision:** `route` → `expense-review`.
+- **Decision:** `Needs Review`.
 
 ## 3. Currency
 
 Evaluate amounts in **US dollars (USD)**. If the amount is in any other currency, do
 **not** guess an exchange rate.
 
-- **Decision:** `route` → `expense-review` for FX verification.
+- **Decision:** `Needs Review` for FX verification.
 
 ## 4. Amount thresholds (USD)
 
 For routine internal meals (no external guests) with a clear USD amount:
 
-| Amount (USD)             | Decision  | Queue              |
-| ------------------------ | --------- | ------------------ |
-| $150 or less             | `approve` | `expense-approved` |
-| Over $150, up to $1,000  | `route`   | `expense-review`   |
-| Over $1,000              | `flag`    | `expense-flagged`  |
+| Amount (USD)             | Decision       |
+| ------------------------ | -------------- |
+| $150 or less             | `Approved`     |
+| Over $150, up to $1,000  | `Needs Review` |
+| Over $1,000              | `Flagged`      |
 
-Boundary values follow the table exactly: **$150 is `approve`**, **$1,000 is
-`route`**.
+Boundary values follow the table exactly: **$150 is `Approved`**, **$1,000 is
+`Needs Review`**.
 
 ## Notes for the reviewer
 

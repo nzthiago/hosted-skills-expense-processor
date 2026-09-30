@@ -30,8 +30,8 @@ Examples
     # Swap in a stricter TRAVEL policy, then re-send a $450 flight and watch it flip
     # approve -> review — while meals/equipment are unaffected
     uv run --project src --no-sync python scripts/set_policy.py --file samples/strict-travel-policy.md --name travel-policy.md --cloud
-    uv run --project src --no-sync python scripts/send_expense.py --file samples/travel.txt --cloud
-    uv run --project src --no-sync python scripts/read_decision.py --queue all --peek --cloud
+    uv run --project src --no-sync python scripts/demo_dataverse.py --scenario approved
+    uv run --project src --no-sync python scripts/demo_dataverse.py --scenario approved
 
     # Restore the shipped travel policy (or re-seed everything)
     uv run --project src --no-sync python scripts/set_policy.py --file src/policies/travel-policy.md --cloud

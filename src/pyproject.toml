@@ -1,15 +1,12 @@
 [project]
 name = "functions-hosted-skill-expense-processor"
 version = "0.1.0"
-description = "Queue-triggered expense processor implemented as an Azure Functions hosted skill."
+description = "Dataverse-triggered expense processor implemented as an Azure Functions hosted skill."
 requires-python = ">=3.13,<3.14"
 dependencies = [
     # Azure Functions hosted skills runtime + Azure Monitor exporter.
     # Distribution: azurefunctions-agents-runtime; import package: azure_functions_agents.
     "azurefunctions-agents-runtime[monitor]==0.1.0b8",
-    # Operator-facing demo scripts send and inspect queue messages with Entra authentication.
-    # Runtime policy reads and decision writes use Connector Namespace MCP servers instead.
-    "azure-storage-queue>=12.17.0",
     "azure-identity>=1.19.0",
 ]
 

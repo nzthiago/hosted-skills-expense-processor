@@ -1,0 +1,95 @@
+$ErrorActionPreference = 'Stop'
+
+$resourceGroup = azd env get-value AZURE_RESOURCE_GROUP_NAME
+$functionName = azd env get-value AZURE_FUNCTION_NAME
+$gatewayName = azd env get-value DATAVERSE_CONNECTOR_GATEWAY_NAME
+$connectionName = azd env get-value DATAVERSE_CONNECTION_NAME
+$environmentUrl = azd env get-value DATAVERSE_ENVIRONMENT_URL 2>$null
+$environmentId = azd env get-value DATAVERSE_ENVIRONMENT_ID 2>$null
+$environmentName = azd env get-value DATAVERSE_ENVIRONMENT_NAME 2>$null
+$tableName = azd env get-value DATAVERSE_TABLE_NAME
+
+if (
+    [string]::IsNullOrWhiteSpace($environmentUrl) -and
+    (
+        -not [string]::IsNullOrWhiteSpace($environmentId) -or
+        -not [string]::IsNullOrWhiteSpace($environmentName)
+    )
+) {
+    $token = az account get-access-token `
+        --resource https://globaldisco.crm.dynamics.com `
+        --query accessToken -o tsv
+    $instances = Invoke-RestMethod `
+        -Uri 'https://globaldisco.crm.dynamics.com/api/discovery/v2.0/Instances' `
+        -Headers @{ Authorization = "Bearer $token" }
+    if (-not [string]::IsNullOrWhiteSpace($environmentId)) {
+        $environmentUrl = $instances.value |
+            Where-Object { $_.EnvironmentId -ieq $environmentId } |
+            Select-Object -First 1 -ExpandProperty Url
+    }
+    else {
+        $environmentUrl = $instances.value |
+            Where-Object { $_.FriendlyName -ieq $environmentName } |
+            Select-Object -First 1 -ExpandProperty Url
+    }
+}
+
+$environmentUrl = "$environmentUrl".TrimEnd('/')
+if ([string]::IsNullOrWhiteSpace($environmentUrl)) {
+    throw "Set DATAVERSE_ENVIRONMENT_URL, DATAVERSE_ENVIRONMENT_ID, or DATAVERSE_ENVIRONMENT_NAME before deployment."
+}
+
+$functionHost = az resource show `
+    -g $resourceGroup `
+    -n $functionName `
+    --resource-type Microsoft.Web/sites `
+    --query properties.defaultHostName `
+    -o tsv
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($functionHost)) {
+    throw "Failed to resolve the Function App hostname."
+}
+
+$connectorKey = az functionapp keys list `
+    -g $resourceGroup `
+    -n $functionName `
+    --query systemKeys.connector_extension `
+    -o tsv
+if ([string]::IsNullOrWhiteSpace($connectorKey)) {
+    throw "The connector_extension system key is unavailable. Confirm the Function App started successfully."
+}
+
+$encodedKey = [uri]::EscapeDataString($connectorKey)
+$callbackUrl = "https://$functionHost/runtime/webhooks/connector?functionName=main&code=$encodedKey"
+
+$parameterFile = [IO.Path]::GetTempFileName()
+try {
+    @{
+        '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'
+        contentVersion = '1.0.0.0'
+        parameters = @{
+            connectorGatewayName = @{ value = $gatewayName }
+            connectionName = @{ value = $connectionName }
+            dataset = @{ value = $environmentUrl }
+            tableName = @{ value = $tableName }
+            callbackUrl = @{ value = $callbackUrl }
+        }
+    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $parameterFile -Encoding utf8
+
+    az deployment group create `
+        -g $resourceGroup `
+        --name dataverse-expense-intake-trigger `
+        --template-file infra/app/dataverse-trigger-config.bicep `
+        --parameters "@$parameterFile" `
+        --only-show-errors `
+        -o none
+}
+finally {
+    Remove-Item -LiteralPath $parameterFile -Force -ErrorAction SilentlyContinue
+}
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to configure the Dataverse created-row trigger."
+}
+
+azd env set DATAVERSE_ENVIRONMENT_URL $environmentUrl | Out-Null
+Write-Host "Dataverse Expense Request connector trigger configured directly to the hosted skill for '$tableName'." -ForegroundColor Green

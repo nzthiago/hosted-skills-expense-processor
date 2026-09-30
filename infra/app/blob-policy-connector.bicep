@@ -4,10 +4,10 @@ param name string
 param location string = resourceGroup().location
 param tags object = {}
 
-@description('Object ID of the Function app user-assigned managed identity that invokes the MCP server.')
+@description('Object ID of the Function app user-assigned managed identity.')
 param functionPrincipalId string
 
-@description('Object ID of the deploying user for local MCP testing. Empty skips the access policy.')
+@description('Object ID of the deploying user for connector authorization and local MCP testing.')
 param developerPrincipalId string = ''
 
 @description('Entra tenant ID used by connection access policies.')
@@ -19,25 +19,27 @@ param storageAccountName string
 @description('Blob container containing the policy documents.')
 param policyContainerName string
 
-@description('Output queues the expense processor may route decisions to.')
-param outputQueueNames array
+@description('Dataverse entity set name used by the Update a row operation.')
+param dataverseEntitySetName string = 'hep_expenserequests'
+
+@description('Dataverse environment URL used by the Update a row operation.')
+param dataverseEnvironmentUrl string
 
 @description('Name of the Azure Blob connection.')
 param blobConnectionName string = 'blob-policy-reader'
 
-@description('Name of the Azure Queues connection.')
-param queueConnectionName string = 'queue-decision-writer'
+@description('Name of the Dataverse connection.')
+param dataverseConnectionName string = 'dataverse-expense-requests'
 
 @description('Name of the Blob policy MCP server.')
 param policyMcpServerName string = 'Blob-policy-reader'
 
-@description('Name of the queue-routing MCP server.')
-param queueMcpServerName string = 'Queue-decision-writer'
+@description('Name of the Dataverse update MCP server.')
+param dataverseMcpServerName string = 'Dataverse-expense-updater'
 
 var storageBlobDataReaderRoleDefinitionId = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
-var storageQueueDataMessageSenderRoleDefinitionId = 'c6a89b2d-59bc-44d0-9896-0f6e12d7b80a'
-var queueStorageEndpoint = 'https://${storageAccountName}.queue.${environment().suffixes.storage}/'
 
+#disable-next-line BCP081
 resource connectorNamespace 'Microsoft.Web/connectorGateways@2026-05-01-preview' = {
   name: name
   location: location
@@ -48,6 +50,7 @@ resource connectorNamespace 'Microsoft.Web/connectorGateways@2026-05-01-preview'
   properties: {}
 }
 
+#disable-next-line BCP081
 resource blobConnection 'Microsoft.Web/connectorGateways/connections@2026-05-01-preview' = {
   parent: connectorNamespace
   name: blobConnectionName
@@ -61,23 +64,20 @@ resource blobConnection 'Microsoft.Web/connectorGateways/connections@2026-05-01-
   }
 }
 
-resource queueConnection 'Microsoft.Web/connectorGateways/connections@2026-05-01-preview' = {
+#disable-next-line BCP081
+resource dataverseConnection 'Microsoft.Web/connectorGateways/connections@2026-05-01-preview' = {
   parent: connectorNamespace
-  name: queueConnectionName
+  name: dataverseConnectionName
   properties: {
-    connectorName: 'azurequeues'
-    displayName: 'Expense Decision Queue Writer'
-    parameterValueSet: {
-      name: 'managedIdentityAuth'
-      values: {}
-    }
+    connectorName: 'commondataservice'
+    displayName: 'Expense Request Dataverse'
   }
 }
 
-resource namespaceConnectionAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = {
+#disable-next-line BCP081
+resource namespaceBlobAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = {
   parent: blobConnection
   name: 'namespace-policy-reader'
-  location: location
   properties: {
     principal: {
       type: 'ActiveDirectory'
@@ -89,10 +89,10 @@ resource namespaceConnectionAccessPolicy 'Microsoft.Web/connectorGateways/connec
   }
 }
 
-resource functionConnectionAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = {
+#disable-next-line BCP081
+resource functionBlobAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = {
   parent: blobConnection
   name: 'function-policy-reader'
-  location: location
   properties: {
     principal: {
       type: 'ActiveDirectory'
@@ -104,10 +104,10 @@ resource functionConnectionAccessPolicy 'Microsoft.Web/connectorGateways/connect
   }
 }
 
-resource developerConnectionAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = if (!empty(developerPrincipalId)) {
+#disable-next-line BCP081
+resource developerBlobAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = if (!empty(developerPrincipalId)) {
   parent: blobConnection
   name: 'developer-policy-reader'
-  location: location
   properties: {
     principal: {
       type: 'ActiveDirectory'
@@ -119,10 +119,10 @@ resource developerConnectionAccessPolicy 'Microsoft.Web/connectorGateways/connec
   }
 }
 
-resource namespaceQueueConnectionAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = {
-  parent: queueConnection
-  name: 'namespace-decision-writer'
-  location: location
+#disable-next-line BCP081
+resource namespaceDataverseAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = {
+  parent: dataverseConnection
+  name: 'namespace-expense-updater'
   properties: {
     principal: {
       type: 'ActiveDirectory'
@@ -134,10 +134,10 @@ resource namespaceQueueConnectionAccessPolicy 'Microsoft.Web/connectorGateways/c
   }
 }
 
-resource functionQueueConnectionAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = {
-  parent: queueConnection
-  name: 'function-decision-writer'
-  location: location
+#disable-next-line BCP081
+resource functionDataverseAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = {
+  parent: dataverseConnection
+  name: 'function-expense-updater'
   properties: {
     principal: {
       type: 'ActiveDirectory'
@@ -149,10 +149,10 @@ resource functionQueueConnectionAccessPolicy 'Microsoft.Web/connectorGateways/co
   }
 }
 
-resource developerQueueConnectionAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = if (!empty(developerPrincipalId)) {
-  parent: queueConnection
-  name: 'developer-decision-writer'
-  location: location
+#disable-next-line BCP081
+resource developerDataverseAccessPolicy 'Microsoft.Web/connectorGateways/connections/accessPolicies@2026-05-01-preview' = if (!empty(developerPrincipalId)) {
+  parent: dataverseConnection
+  name: 'developer-expense-updater'
   properties: {
     principal: {
       type: 'ActiveDirectory'
@@ -164,6 +164,7 @@ resource developerQueueConnectionAccessPolicy 'Microsoft.Web/connectorGateways/c
   }
 }
 
+#disable-next-line BCP081
 resource policyMcpServer 'Microsoft.Web/connectorGateways/mcpServerConfigs@2026-05-01-preview' = {
   parent: connectorNamespace
   name: policyMcpServerName
@@ -177,7 +178,7 @@ resource policyMcpServer 'Microsoft.Web/connectorGateways/mcpServerConfigs@2026-
     policies: []
     connectors: [
       {
-        connectionName: blobConnectionName
+        connectionName: blobConnection.name
         name: 'azureblob'
         displayName: 'Azure Blob Storage'
         description: 'Lists and reads expense policy documents.'
@@ -224,17 +225,18 @@ resource policyMcpServer 'Microsoft.Web/connectorGateways/mcpServerConfigs@2026-
     ]
   }
   dependsOn: [
-    namespaceConnectionAccessPolicy
-    functionConnectionAccessPolicy
-    developerConnectionAccessPolicy
+    namespaceBlobAccessPolicy
+    functionBlobAccessPolicy
+    developerBlobAccessPolicy
   ]
 }
 
-resource queueMcpServer 'Microsoft.Web/connectorGateways/mcpServerConfigs@2026-05-01-preview' = {
+#disable-next-line BCP081
+resource dataverseMcpServer 'Microsoft.Web/connectorGateways/mcpServerConfigs@2026-05-01-preview' = {
   parent: connectorNamespace
-  name: queueMcpServerName
+  name: dataverseMcpServerName
   properties: {
-    description: 'Send expense decisions to the approved Azure Queue Storage output queues.'
+    description: 'Update the decision fields on the source Dataverse Expense Request row.'
     state: 'Enabled'
     disableApiKeyAuth: true
     settings: {
@@ -243,37 +245,62 @@ resource queueMcpServer 'Microsoft.Web/connectorGateways/mcpServerConfigs@2026-0
     policies: []
     connectors: [
       {
-        connectionName: queueConnectionName
-        name: 'azurequeues'
-        displayName: 'Azure Queue Storage'
-        description: 'Routes one expense decision to an approved output queue.'
+        connectionName: dataverseConnection.name
+        name: 'commondataservice'
+        displayName: 'Microsoft Dataverse'
+        description: 'Updates one existing Expense Request row.'
         operations: [
           {
-            name: 'PutMessage_V2'
-            displayName: 'Route expense decision'
-            description: 'Send one expense decision JSON message to the selected output queue.'
+            name: 'PatchItem_V2'
+            displayName: 'Update expense request'
+            description: 'Update the decision fields on the source Expense Request row.'
             userParameters: [
               {
-                name: 'storageAccountName'
-                value: queueStorageEndpoint
+                name: 'dataset'
+                value: dataverseEnvironmentUrl
+              }
+              {
+                name: 'table'
+                value: dataverseEntitySetName
               }
             ]
             agentParameters: [
               {
-                name: 'queueName'
+                name: 'id'
                 schema: {
                   type: 'string'
                   required: true
-                  enum: outputQueueNames
-                  description: 'Destination queue for the decision.'
+                  description: 'Dataverse GUID from source.row_id.'
                 }
               }
               {
-                name: 'message'
+                name: 'item'
                 schema: {
-                  type: 'string'
+                  type: 'object'
                   required: true
-                  description: 'Complete expense decision as a compact JSON string.'
+                  description: 'Decision fields: hep_decision, hep_reason, hep_policyapplied, and hep_processedon.'
+                  properties: {
+                    hep_decision: {
+                      type: 'string'
+                      enum: [
+                        'Approved'
+                        'Needs Review'
+                        'Flagged'
+                      ]
+                    }
+                    hep_reason: {
+                      type: 'string'
+                      maxLength: 90
+                      description: 'One-sentence explanation with at most 90 characters.'
+                    }
+                    hep_policyapplied: {
+                      type: 'string'
+                    }
+                    hep_processedon: {
+                      type: 'string'
+                      description: 'Current UTC time in compact ISO 8601 basic format YYYYMMDDTHHMMSSZ, without colons.'
+                    }
+                  }
                 }
               }
             ]
@@ -283,9 +310,9 @@ resource queueMcpServer 'Microsoft.Web/connectorGateways/mcpServerConfigs@2026-0
     ]
   }
   dependsOn: [
-    namespaceQueueConnectionAccessPolicy
-    functionQueueConnectionAccessPolicy
-    developerQueueConnectionAccessPolicy
+    namespaceDataverseAccessPolicy
+    functionDataverseAccessPolicy
+    developerDataverseAccessPolicy
   ]
 }
 
@@ -303,18 +330,6 @@ resource policyContainer 'Microsoft.Storage/storageAccounts/blobServices/contain
   name: policyContainerName
 }
 
-resource queueService 'Microsoft.Storage/storageAccounts/queueServices@2023-05-01' existing = {
-  parent: storageAccount
-  name: 'default'
-}
-
-resource outputQueues 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-01' existing = [
-  for queueName in outputQueueNames: {
-    parent: queueService
-    name: queueName
-  }
-]
-
 resource connectorPolicyReaderRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(policyContainer.id, connectorNamespace.name, storageBlobDataReaderRoleDefinitionId)
   scope: policyContainer
@@ -328,24 +343,10 @@ resource connectorPolicyReaderRole 'Microsoft.Authorization/roleAssignments@2022
   }
 }
 
-resource connectorQueueSenderRoles 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
-  for (queueName, index) in outputQueueNames: {
-    name: guid(outputQueues[index].id, connectorNamespace.name, storageQueueDataMessageSenderRoleDefinitionId)
-    scope: outputQueues[index]
-    properties: {
-      roleDefinitionId: subscriptionResourceId(
-        'Microsoft.Authorization/roleDefinitions',
-        storageQueueDataMessageSenderRoleDefinitionId
-      )
-      principalId: connectorNamespace.identity.principalId
-      principalType: 'ServicePrincipal'
-    }
-  }
-]
-
 output policyMcpServerUrl string = policyMcpServer.properties.mcpEndpointUrl
-output queueMcpServerUrl string = queueMcpServer.properties.mcpEndpointUrl
+output dataverseMcpServerUrl string = dataverseMcpServer.properties.mcpEndpointUrl
 output connectorNamespaceName string = connectorNamespace.name
 output blobConnectionName string = blobConnection.name
-output queueConnectionName string = queueConnection.name
+output dataverseConnectionName string = dataverseConnection.name
+output dataverseConnectionId string = dataverseConnection.id
 output principalId string = connectorNamespace.identity.principalId

@@ -12,7 +12,8 @@
     "//connectors": "Copy both MCP server URLs from `azd env get-values`; leave client IDs empty to use your developer credential.",
     "POLICY_MCP_SERVER_URL": "",
     "POLICY_MCP_CLIENT_ID": "",
-    "QUEUE_MCP_SERVER_URL": "",
-    "QUEUE_MCP_CLIENT_ID": ""
+    "DATAVERSE_MCP_SERVER_URL": "",
+    "DATAVERSE_MCP_CLIENT_ID": "",
+    "DATAVERSE_TABLE_NAME": "hep_expenserequests"
   }
 }

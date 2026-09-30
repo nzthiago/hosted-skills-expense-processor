@@ -1,24 +1,21 @@
 {
   "version": "2.0",
+  "functionTimeout": "00:30:00",
   "telemetryMode": "OpenTelemetry",
   "extensions": {
     "http": {
       "routePrefix": ""
-    },
-    "queues": {
-      "messageEncoding": "none"
     }
   },
   "logging": {
     "logLevel": {
       "default": "Warning",
-      "Azure.Storage.Queues": "Warning",
       "Azure.Core": "Warning",
-      "Host.Triggers.Queue": "Warning"
+      "Host.Triggers.Connector": "Warning"
     }
   },
   "extensionBundle": {
-    "id": "Microsoft.Azure.Functions.ExtensionBundle",
-    "version": "[4.*, 5.0.0)"
+    "id": "Microsoft.Azure.Functions.ExtensionBundle.Preview",
+    "version": "[4.42.0, 5.0.0)"
   }
 }

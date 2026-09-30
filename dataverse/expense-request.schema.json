@@ -1,0 +1,105 @@
+{
+  "publisher": {
+    "uniqueName": "hosted_expense_processor",
+    "friendlyName": "Hosted Expense Processor",
+    "prefix": "hep",
+    "optionValuePrefix": 81800
+  },
+  "solution": {
+    "uniqueName": "HostedExpenseProcessor",
+    "friendlyName": "Hosted Expense Processor",
+    "version": "1.0.0.0"
+  },
+  "table": {
+    "schemaName": "hep_ExpenseRequest",
+    "logicalName": "hep_expenserequest",
+    "entitySetName": "hep_expenserequests",
+    "displayName": "Expense Request",
+    "displayCollectionName": "Expense Requests",
+    "columns": [
+      {
+        "schemaName": "hep_ExpenseId",
+        "logicalName": "hep_expenseid",
+        "displayName": "Expense ID",
+        "type": "String",
+        "maxLength": 128,
+        "required": false,
+        "primaryName": true
+      },
+      {
+        "schemaName": "hep_Description",
+        "logicalName": "hep_description",
+        "displayName": "Description",
+        "type": "String",
+        "maxLength": 2000
+      },
+      {
+        "schemaName": "hep_Amount",
+        "logicalName": "hep_amount",
+        "displayName": "Amount",
+        "type": "String",
+        "maxLength": 64
+      },
+      {
+        "schemaName": "hep_Currency",
+        "logicalName": "hep_currency",
+        "displayName": "Currency",
+        "type": "String",
+        "maxLength": 16
+      },
+      {
+        "schemaName": "hep_Vendor",
+        "logicalName": "hep_vendor",
+        "displayName": "Vendor",
+        "type": "String",
+        "maxLength": 200
+      },
+      {
+        "schemaName": "hep_Category",
+        "logicalName": "hep_category",
+        "displayName": "Category",
+        "type": "String",
+        "maxLength": 100
+      },
+      {
+        "schemaName": "hep_SubmittedBy",
+        "logicalName": "hep_submittedby",
+        "displayName": "Submitted by",
+        "type": "String",
+        "maxLength": 200
+      },
+      {
+        "schemaName": "hep_Decision",
+        "logicalName": "hep_decision",
+        "displayName": "Decision",
+        "type": "String",
+        "maxLength": 32,
+        "required": false
+      },
+      {
+        "schemaName": "hep_Reason",
+        "logicalName": "hep_reason",
+        "displayName": "Reason",
+        "type": "String",
+        "maxLength": 2000,
+        "required": false
+      },
+      {
+        "schemaName": "hep_PolicyApplied",
+        "logicalName": "hep_policyapplied",
+        "displayName": "Policy applied",
+        "type": "String",
+        "maxLength": 260,
+        "required": false
+      },
+      {
+        "schemaName": "hep_ProcessedOn",
+        "logicalName": "hep_processedon",
+        "displayName": "Processed on",
+        "type": "String",
+        "maxLength": 64,
+        "required": false
+      }
+    ]
+  }
+}

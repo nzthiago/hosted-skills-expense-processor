@@ -52,8 +52,23 @@ param reasoningEffort string = 'medium'
 ])
 param reasoningSummary string = 'concise'
 
-@description('Object ID of the user/principal running the deployment. Granted Storage Queue Data Contributor so the demo scripts (scripts/send_expense.py, scripts/read_decision.py) can send test requests to the input queue and read routed decisions from the output queues. Populated by azd from AZURE_PRINCIPAL_ID.')
+@description('Object ID of the user/principal running the deployment. Granted policy Blob access and Connector Namespace connection access for setup and demo commands. Populated by azd from AZURE_PRINCIPAL_ID.')
 param principalId string = ''
+
+@description('Region for the Connector Namespace.')
+param connectorNamespaceLocation string = 'westcentralus'
+
+@description('URL of the Dataverse environment, for example https://org.crm.dynamics.com.')
+param dataverseEnvironmentUrl string = ''
+
+@description('Power Platform environment ID, used when the URL is not set.')
+param dataverseEnvironmentId string = ''
+
+@description('Friendly Dataverse environment name, used when the URL and ID are not set.')
+param dataverseEnvironmentName string = ''
+
+@description('Entity set name for the Expense Request table.')
+param dataverseTableName string = 'hep_expenserequests'
 
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
@@ -65,13 +80,7 @@ var aiGatewayName = 'apim-expense-skill-${resourceToken}'
 var deploymentStorageContainerName = 'app-package-${take(functionAppName, 32)}-${take(toLower(uniqueString(functionAppName, resourceToken)), 7)}'
 var connectorNamespaceName = 'cns-expense-skill-${resourceToken}'
 
-var inputQueueName = 'expense-requests'
-var outputQueueNames = [
-  'expense-approved'
-  'expense-review'
-  'expense-flagged'
-]
-var allQueueNames = union([inputQueueName], outputQueueNames)
+var dataverseConnectionName = 'dataverse-expense-requests'
 
 // Blob container that holds the expense-approval policy documents the skill chooses among at
 // decision time. Deployment seeds a general policy plus category-specific documents.
@@ -169,13 +178,14 @@ module api './app/api.bicep' = {
       AZURE_FUNCTIONS_AGENTS_REASONING_EFFORT: reasoningEffort
       AZURE_FUNCTIONS_AGENTS_REASONING_SUMMARY: reasoningSummary
       AZURE_CLIENT_ID: apiUserAssignedIdentity.outputs.clientId
-      // OUTPUT_STORAGE_ACCOUNT is exported for the operator-facing demo scripts.
+      // Storage settings support policy seeding.
       OUTPUT_STORAGE_ACCOUNT: storage.outputs.name
-      // The hosted skill calls both least-privilege storage MCP servers with its UAMI.
+      DATAVERSE_TABLE_NAME: dataverseTableName
+      // The hosted skill calls least-privilege policy and Dataverse MCP servers with its UAMI.
       POLICY_MCP_SERVER_URL: policyConnector.outputs.policyMcpServerUrl
       POLICY_MCP_CLIENT_ID: apiUserAssignedIdentity.outputs.clientId
-      QUEUE_MCP_SERVER_URL: policyConnector.outputs.queueMcpServerUrl
-      QUEUE_MCP_CLIENT_ID: apiUserAssignedIdentity.outputs.clientId
+      DATAVERSE_MCP_SERVER_URL: policyConnector.outputs.dataverseMcpServerUrl
+      DATAVERSE_MCP_CLIENT_ID: apiUserAssignedIdentity.outputs.clientId
       ENABLE_MULTIPLATFORM_BUILD: 'true'
       PYTHON_ENABLE_INIT_INDEXING: '1'
     }
@@ -212,33 +222,23 @@ module storage 'br/public:avm/res/storage/storage-account:0.8.3' = {
   }
 }
 
-// Input + per-outcome output queues
-module storageQueues './app/storage-queues.bicep' = {
-  name: 'storageQueues'
-  scope: rg
-  params: {
-    storageAccountName: storage.outputs.name
-    queueNames: allQueueNames
-  }
-}
-
-// Least-privilege policy reads and decision writes through managed-identity storage MCP connectors.
+// Least-privilege policy reads and Dataverse decision writes through Connector Namespace MCP.
 module policyConnector './app/blob-policy-connector.bicep' = {
   name: 'policyConnector'
   scope: rg
   params: {
     name: connectorNamespaceName
-    location: location
+    location: connectorNamespaceLocation
     tags: tags
     functionPrincipalId: apiUserAssignedIdentity.outputs.principalId
     developerPrincipalId: principalId
+    tenantId: tenant().tenantId
     storageAccountName: storage.outputs.name
     policyContainerName: policyContainerName
-    outputQueueNames: outputQueueNames
+    dataverseConnectionName: dataverseConnectionName
+    dataverseEntitySetName: dataverseTableName
+    dataverseEnvironmentUrl: dataverseEnvironmentUrl
   }
-  dependsOn: [
-    storageQueues
-  ]
 }
 
 // RBAC — storage data roles + app insights metrics publisher for the function identity
@@ -249,8 +249,7 @@ module rbac './app/rbac.bicep' = {
     storageAccountName: storage.outputs.name
     appInsightsName: monitoring.outputs.name
     managedIdentityPrincipalId: apiUserAssignedIdentity.outputs.principalId
-    // Grant the deployer data-plane queue access so the demo scripts can send test
-    // requests to the input queue and read decisions from the output queues.
+    // Grant the deployer Blob access so policy setup and customization work locally.
     developerPrincipalId: principalId
   }
 }
@@ -288,10 +287,16 @@ output FOUNDRY_MODEL string = foundry.outputs.modelDeploymentName
 output AI_GATEWAY_NAME string = aiGateway.outputs.name
 output AI_GATEWAY_URL string = aiGateway.outputs.gatewayUrl
 output AI_GATEWAY_RESPONSES_ENDPOINT string = aiGateway.outputs.responsesEndpoint
+output AZURE_RESOURCE_GROUP_NAME string = rg.name
 output OUTPUT_STORAGE_ACCOUNT string = storage.outputs.name
-output INPUT_QUEUE_NAME string = inputQueueName
 output POLICY_MCP_SERVER_URL string = policyConnector.outputs.policyMcpServerUrl
-output QUEUE_MCP_SERVER_URL string = policyConnector.outputs.queueMcpServerUrl
+output DATAVERSE_MCP_SERVER_URL string = policyConnector.outputs.dataverseMcpServerUrl
 output POLICY_CONNECTOR_NAMESPACE_NAME string = policyConnector.outputs.connectorNamespaceName
 output POLICY_CONNECTOR_CONNECTION_NAME string = policyConnector.outputs.blobConnectionName
-output QUEUE_CONNECTOR_CONNECTION_NAME string = policyConnector.outputs.queueConnectionName
+output DATAVERSE_CONNECTOR_GATEWAY_NAME string = policyConnector.outputs.connectorNamespaceName
+output DATAVERSE_CONNECTION_NAME string = policyConnector.outputs.dataverseConnectionName
+output DATAVERSE_CONNECTION_ID string = policyConnector.outputs.dataverseConnectionId
+output DATAVERSE_ENVIRONMENT_URL string = dataverseEnvironmentUrl
+output DATAVERSE_ENVIRONMENT_ID string = dataverseEnvironmentId
+output DATAVERSE_ENVIRONMENT_NAME string = dataverseEnvironmentName
+output DATAVERSE_TABLE_NAME string = dataverseTableName
